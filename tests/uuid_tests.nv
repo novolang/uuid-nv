@@ -1,0 +1,193 @@
+// uuid_tests.nv — RFC 9562's own example values, the layout each
+// version promises, and the text form both ways.
+//
+// Run from the package directory:
+//   novo test tests/uuid_tests.nv
+//
+// The vectors are the UUIDs RFC 9562 prints in its appendix, so the
+// suite is evidence that these are the fields the specification names —
+// not that this module agrees with itself.  The generated values are
+// drawn from a SEEDED generator, so an assertion about a v4 or a v7 is
+// an assertion about a fixed number rather than about luck.
+
+use std.bytes
+use std.str
+use std.test
+use rng
+use uuid
+
+// RFC 9562's version 4 example.
+fn rfc_v4() -> Str
+    "919108f7-52d1-4320-9bac-f847db4148a8"
+
+// RFC 9562's version 7 example, in the uppercase the document prints.
+// Its timestamp field is 0x017F22E279B0.
+fn rfc_v7() -> Str
+    "017F22E2-79B0-7CC3-98C4-DC0C0C07398F"
+
+// The millisecond those 48 bits name: 2022-02-22T19:22:22Z.
+fn rfc_v7_ms() -> Int
+    1645557742000
+
+@test
+fn test_the_rfc_version_4_example() [io]
+    let u = uuid.parse(rfc_v4())!
+    test.assert_eq(u.version(), 4)
+    test.assert_eq(u.variant(), 2)
+    test.assert_eq(u.to_str(), rfc_v4())
+
+@test
+fn test_the_rfc_version_7_example() [io]
+    // Parsed from the uppercase the document prints, and printed back
+    // in the lowercase the specification says to produce.
+    let u = uuid.parse(rfc_v7())!
+    test.assert_eq(u.version(), 7)
+    test.assert_eq(u.variant(), 2)
+    test.assert_eq(u.unix_ms(), rfc_v7_ms())
+    test.assert_eq(u.to_str(), str.lower(rfc_v7()))
+
+@test
+fn test_the_two_constants_the_specification_names() [io]
+    test.assert_eq(uuid.nil().to_str(), "00000000-0000-0000-0000-000000000000")
+    test.assert_eq(uuid.max().to_str(), "ffffffff-ffff-ffff-ffff-ffffffffffff")
+    // The Nil UUID's version and variant fields are zero, which is how
+    // a reader tells it from a value some version produced.
+    test.assert_eq(uuid.nil().version(), 0)
+    test.assert_eq(uuid.nil().variant(), 0)
+
+@test
+fn test_the_hyphenless_form_names_the_same_value() [io]
+    // The 32 digits with no hyphens is what a text column usually
+    // holds, and it must parse to the same value the canonical form
+    // does — otherwise a round trip through a database changes an
+    // identifier.
+    let canonical = uuid.parse(rfc_v4())!
+    let plain = uuid.parse("919108f752d143209bacf847db4148a8")!
+    test.assert_eq(plain == canonical, true)
+    test.assert_eq(plain.to_str(), rfc_v4())
+
+@test
+fn test_case_does_not_change_the_value() [io]
+    let upper = uuid.parse("919108F7-52D1-4320-9BAC-F847DB4148A8")!
+    let lower = uuid.parse(rfc_v4())!
+    test.assert_eq(upper == lower, true)
+
+@test
+fn test_what_is_not_a_uuid_is_refused() [io]
+    // Every one of these is the right length or nearly it, which is
+    // what makes refusing them worth asserting.
+    test.assert_eq(uuid.parse("") == None, true)
+    test.assert_eq(uuid.parse("919108f7-52d1-4320-9bac-f847db4148a") == None, true)
+    test.assert_eq(uuid.parse("919108f7-52d1-4320-9bac-f847db4148a88") == None, true)
+    // A hyphen in the wrong place.
+    test.assert_eq(uuid.parse("919108f7X52d1-4320-9bac-f847db4148a8") == None, true)
+    // A digit that is not hexadecimal.
+    test.assert_eq(uuid.parse("919108f7-52d1-4320-9bac-f847db4148ag") == None, true)
+
+@test
+fn test_bytes_round_trip_big_endian() [io]
+    // The byte order is the one RFC 9562 lays a UUID out in, so the
+    // hexadecimal of the bytes is the text form with its hyphens
+    // removed.
+    let u = uuid.parse(rfc_v4())!
+    let b = u.to_bytes()
+    test.assert_eq(bytes.len(b), 16)
+    test.assert_eq(bytes.to_hex(b), "919108f752d143209bacf847db4148a8")
+    test.assert_eq(uuid.from_bytes(b)! == u, true)
+
+@test
+fn test_a_buffer_of_the_wrong_length_is_refused() [io]
+    // A length that is nearly right is a caller reading the wrong
+    // field, so it is refused rather than padded or truncated.
+    test.assert_eq(uuid.from_bytes(bytes.zeros(15)) == None, true)
+    test.assert_eq(uuid.from_bytes(bytes.zeros(17)) == None, true)
+    test.assert_eq(uuid.from_bytes(bytes.zeros(16)) == Some(uuid.nil()), true)
+
+@test
+fn test_a_generated_v4_carries_the_fields_a_v4_promises() [io]
+    var r = rng.seeded(7)
+    for i in 0 .. 64
+        test.case("draw ${i}")
+        let u = uuid.v4_from(r)
+        test.assert_eq(u.version(), 4)
+        test.assert_eq(u.variant(), 2)
+
+@test
+fn test_a_generated_v4_is_fixed_by_its_seed() [io]
+    // The same seed gives the same identifier, which is what makes a
+    // fixture reproducible — and pins the stamping to one number rather
+    // than to whatever the generator happened to say.
+    var r = rng.seeded(7)
+    test.assert_eq(uuid.v4_from(r).to_str(), "b358faf7-4ef9-465a-875c-3d964f482cd2")
+
+@test
+fn test_a_generated_v7_carries_the_timestamp_it_was_given() [io]
+    var r = rng.seeded(7)
+    for i in 0 .. 64
+        test.case("draw ${i}")
+        let u = uuid.v7_from(rfc_v7_ms() + i, r)
+        test.assert_eq(u.version(), 7)
+        test.assert_eq(u.variant(), 2)
+        test.assert_eq(u.unix_ms(), rfc_v7_ms() + i)
+
+@test
+fn test_v7_values_sort_in_the_order_they_were_minted() [io]
+    // The whole reason v7 exists: the text form of a later identifier
+    // is greater than the text form of an earlier one, so an index on
+    // the column stays dense.
+    var r = rng.seeded(11)
+    var previous = uuid.v7_from(rfc_v7_ms(), r).to_str()
+    for step in 1 .. 64
+        test.case("step ${step}")
+        let next = uuid.v7_from(rfc_v7_ms() + step, r).to_str()
+        test.assert_true(next > previous, "${next} did not sort after ${previous}")
+        previous = next
+
+@test
+fn test_a_v7_keeps_the_timestamp_at_the_top_of_the_48_bit_range() [io]
+    // The field is 48 bits, so a millisecond above that range is
+    // truncated to it rather than corrupting the version nibble beside
+    // it.  The bound is the year 10889, which is why nobody has to care
+    // — but the masking is what makes that true.
+    var r = rng.seeded(3)
+    let u = uuid.v7_from(281474976710655, r)
+    test.assert_eq(u.unix_ms(), 281474976710655)
+    test.assert_eq(u.version(), 7)
+
+@test
+fn test_two_v7s_in_one_millisecond_differ() [io]
+    // Ordering is by millisecond and no finer, but two identifiers
+    // minted in the same one must still be two identifiers.
+    var r = rng.seeded(5)
+    let a = uuid.v7_from(rfc_v7_ms(), r)
+    let b = uuid.v7_from(rfc_v7_ms(), r)
+    test.assert_eq(a == b, false)
+    test.assert_eq(a.unix_ms(), b.unix_ms())
+
+@test
+fn test_the_operating_system_forms_answer_a_stamped_value() [io]
+    // Host only: where there is no `/dev/urandom` both answer `None`
+    // rather than falling back to something guessable, and the test
+    // asserts only that whatever comes back carries the right fields.
+    match uuid.v4()
+        None    => test.assert_true(true, "")
+        Some(u) =>
+            test.assert_eq(u.version(), 4)
+            test.assert_eq(u.variant(), 2)
+    match uuid.v7()
+        None    => test.assert_true(true, "")
+        Some(u) =>
+            test.assert_eq(u.version(), 7)
+            test.assert_eq(u.variant(), 2)
+            // Any plausible clock reading is after 2020 and before 2100.
+            test.assert_true(u.unix_ms() > 1577836800000, "the clock read before 2020")
+            test.assert_true(u.unix_ms() < 4102444800000, "the clock read after 2100")
+
+@test
+fn test_two_operating_system_v4s_differ() [io]
+    match uuid.v4()
+        None    => test.assert_true(true, "")
+        Some(a) =>
+            match uuid.v4()
+                None    => test.assert_true(true, "")
+                Some(b) => test.assert_eq(a == b, false)
