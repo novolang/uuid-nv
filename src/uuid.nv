@@ -52,7 +52,6 @@
 // an `Rng` from a hardware entropy peripheral and use the `_from` pair
 // there.
 
-use std.bits
 use std.bytes
 use std.str
 use rng
@@ -213,21 +212,28 @@ fn stamp_v4(u: Uuid) -> Uuid
 // variant fields stamped.  The 12 bits left in the high half and the 62
 // in the low half stay as they arrived — those are a v7's randomness.
 fn stamp_v7(unix_ms: Int, u: Uuid) -> Uuid
-    let timed = bits.bor(bits.shl(bits.band(unix_ms, ms_mask()), 16),
-                         bits.band(u.hi, 0xffff))
-    Uuid { hi: with_version(timed, 7), lo: with_rfc_variant(u.lo) }
+    // The timestamp takes the top 48 bits and the 16 that were already
+    // there stay below it, which is where a v7's first random bits are.
+    let stamp = (unix_ms & ms_mask()) << 16
+    let kept = u.hi & 0xffff
+    Uuid { hi: with_version(stamp | kept, 7), lo: with_rfc_variant(u.lo) }
 
 // `hi` with bits 51..48 of the UUID — the high nibble of octet 6 — set
 // to `version` (RFC 9562 §4.2).
 fn with_version(hi: Int, version: Int) -> Int
-    let cleared = bits.band(hi, bits.bnot(bits.shl(0xf, 12)))
-    bits.bor(cleared, bits.shl(bits.band(version, 0xf), 12))
+    let field = 0xf << 12
+    let cleared = hi & ~field
+    cleared | ((version & 0xf) << 12)
 
 // `lo` with the two most significant bits set to `10`, the variant RFC
 // 9562 specifies (§4.1).  Every other bit is left alone, so the 62 that
 // remain stay as random as they arrived.
 fn with_rfc_variant(lo: Int) -> Int
-    bits.bor(bits.shl(1, 63), bits.band(lo, bits.shr(0 - 1, 2)))
+    // `10` in the top two bits: set bit 63, clear bit 62, and leave the
+    // 62 below them exactly as random as they arrived.
+    let all_ones = 0 - 1
+    let keep_62 = all_ones >>> 2
+    (1 << 63) | (lo & keep_62)
 
 impl Uuid
     // The sixteen bytes, big-endian — the order RFC 9562 lays a UUID
@@ -254,7 +260,7 @@ impl Uuid
     // not mint is still reported — reading somebody else's identifier
     // is the point of asking.
     fn version(self) -> Int
-        bits.band(bits.shr(self.hi, 12), 0xf)
+        (self.hi >>> 12) & 0xf
 
     // The layout family this value belongs to, as the two most
     // significant bits of octet 8.  `2` is the variant RFC 9562
@@ -262,10 +268,10 @@ impl Uuid
     // Apollo NCS layout, and `3` covers Microsoft's and the range
     // reserved for the future.
     fn variant(self) -> Int
-        bits.band(bits.shr(self.lo, 62), 0x3)
+        (self.lo >>> 62) & 0x3
 
     // The Unix millisecond timestamp in the first 48 bits.  Meaningful
     // for a version 7 value and for nothing else — on a v4 these bits
     // are random, so ask `version` first.
     fn unix_ms(self) -> Int
-        bits.shr(self.hi, 16)
+        self.hi >>> 16

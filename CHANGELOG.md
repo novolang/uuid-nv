@@ -4,6 +4,21 @@ Newest first.  Below `1.0.0` a breaking change bumps the **minor**
 number and a compatible one the **patch**; see [Version numbers in the
 Orbit package registry](https://novo-lang.org/docs/registry/semver.html).
 
+## 0.1.1
+
+A patch: the same identifiers, from the same bits.  RFC 9562's example
+values, the version and variant fields on a v4 and a v7, and the
+round trip through text and bytes all still pass.
+
+- **The bit layout is written with the operators.**  The section that
+  stamps the version and variant fields is where a reader checks this
+  package against RFC 9562 §4.1 and §4.2, and the specification writes
+  masks and shifts: `(self.hi >>> 12) & 0xf` for the version,
+  `(1 << 63) | (lo & keep_62)` for the variant.  Nineteen `bits.*`
+  calls in all, with the intermediates named — `stamp`, `kept`,
+  `field`, `keep_62` — so each line says which field it is about.
+  `std.bits` is no longer imported.
+
 ## 0.1.0
 
 First release: `v4`, `v7`, `v4_from`, `v7_from`, `parse`, `from_bytes`,
