@@ -20,24 +20,8 @@
 //
 // Plus the two constants the specification names, `nil` (§5.9) and
 // `max` (§5.10), the canonical text form both ways, and `version` and
-// `variant` for reading a value somebody else minted.
-//
-// How to use it.
-//
-//     // An identifier that reveals nothing.
-//     let id = uuid.v4()!
-//
-//     // An identifier that sorts by when it was made.
-//     let key = uuid.v7()!
-//     println(key.to_str())          // 019250a1-7c3f-7b21-8e0c-…
-//
-// Both read the operating system's CSPRNG and both can fail, because
-// that generator is a file.  The `_from` pair takes a generator you
-// supply instead, so a test can mint the same identifier twice:
-//
-//     var r = rng.seeded(7)
-//     let a = uuid.v4_from(r)
-//     let b = uuid.v7_from(1645557742000, r)
+// `variant` for reading a value somebody else minted.  Each of those
+// carries a worked example below.
 //
 // What it costs.  One read of the operating system's generator per
 // identifier, or two 64-bit draws from a seeded one; then a handful of
@@ -56,10 +40,13 @@ use std.bytes
 use std.str
 use rng
 
-// A UUID, as the two 64-bit halves of its big-endian byte layout.  The
-// halves are the representation rather than a byte buffer because every
-// field this module reads or writes is a bit range, and none of them
-// crosses the eighth byte.
+// A UUID, as the two 64-bit halves of its big-endian byte layout.
+//
+// The halves are the representation rather than a byte buffer because
+// every field this module reads or writes is a bit range, and none of
+// them crosses the eighth byte.  Sixteen bytes and no indirection, so
+// one in a struct or a list costs what the bits cost.  The methods are
+// on the type: `to_str`, `to_bytes`, `version`, `variant`, `unix_ms`.
 pub struct Uuid
     hi: Int
     lo: Int
@@ -79,23 +66,53 @@ fn ms_mask() -> Int
 
 // ── The two constants the specification names ────────────────────────
 
-// The Nil UUID (RFC 9562 §5.9) — all 128 bits zero.  It is the "no
-// identifier" value; its version and variant fields read as 0, which is
-// how a reader tells it from a real one.
+// Answer the Nil UUID (RFC 9562 §5.9) — all 128 bits zero.
+//
+// The "no identifier" value.  Its version and variant fields read as 0,
+// which is how a reader tells it from a value some version produced,
+// and it sorts before every other UUID.
+//
+// ```novo
+// println(uuid.nil().to_str())   // 00000000-0000-0000-0000-000000000000
+// println(uuid.max().to_str())   // ffffffff-ffff-ffff-ffff-ffffffffffff
+//
+// // Neither is a version this module mints, and both say so.
+// println("${uuid.nil().version()} ${uuid.nil().variant()}")   // 0 0
+// ```
 pub fn nil() -> Uuid
     Uuid { hi: 0, lo: 0 }
 
-// The Max UUID (RFC 9562 §5.10) — all 128 bits one.  The sentinel that
-// sorts after every other UUID, for an inclusive upper bound on a range
-// scan.
+// Answer the Max UUID (RFC 9562 §5.10) — all 128 bits one.
+//
+// The sentinel that sorts after every other UUID, for an inclusive
+// upper bound on a range scan.  Like `nil`, it is not a value any
+// version produces; its version field reads 15.  See `nil` for the
+// example.
 pub fn max() -> Uuid
     Uuid { hi: 0 - 1, lo: 0 - 1 }
 
 // ── Reading one somebody else made ───────────────────────────────────
 
-// The UUID in `b`, big-endian, or `None` unless `b` is exactly sixteen
-// bytes.  A length that is nearly right is a caller reading the wrong
-// field, so it is refused rather than padded.
+// Read the UUID in `b`, big-endian, or answer `None` unless `b` is
+// exactly sixteen bytes.
+//
+// The inverse of `to_bytes`, and the form for a `BINARY(16)` column or
+// a wire field.  A length that is nearly right is a caller reading the
+// wrong field, so it is refused rather than padded — a UUID built from
+// fifteen bytes and a zero is a different identifier, and nothing
+// downstream would notice.
+//
+// ```novo
+// use std.bytes
+//
+// // Sixteen bytes in, the same sixteen bytes out.
+// let id = uuid.parse("017f22e2-79b0-7cc3-98c4-dc0c0c07398f") ?? uuid.nil()
+// println((uuid.from_bytes(id.to_bytes()) ?? uuid.nil()).to_str())
+// // 017f22e2-79b0-7cc3-98c4-dc0c0c07398f
+//
+// // Fifteen bytes is not a UUID missing one.
+// println("${uuid.from_bytes(bytes.zeros(15)) == None}")   // true
+// ```
 pub fn from_bytes(b: Bytes) -> ?Uuid
     if bytes.len(b) != byte_len()
         None
@@ -105,14 +122,29 @@ pub fn from_bytes(b: Bytes) -> ?Uuid
         let lo = bytes.u64_be_at(b, 8) ?? 0
         Some(Uuid { hi: hi, lo: lo })
 
-// The UUID `text` spells, in either case, or `None` when it is not one.
+// Read the UUID `text` spells, in either case, or answer `None` when it
+// is not one.
 //
 // Both spellings are accepted: the canonical `8-4-4-4-12` form, and the
 // same 32 digits with the hyphens left out, which is what a database
 // column that stores them as text usually holds.  Nothing else is —
 // no braces, no `urn:uuid:` prefix, no whitespace — because a parser
 // that guesses at the shape of its input accepts strings its writer
-// never meant.
+// never meant.  A hyphen anywhere but the four canonical positions is
+// refused for the same reason: two texts must not name one value.
+//
+// ```novo
+// // RFC 9562's own version 7 example, in the uppercase it prints, and
+// // read back in the lowercase the specification says to produce.
+// let id = uuid.parse("017F22E2-79B0-7CC3-98C4-DC0C0C07398F") ?? uuid.nil()
+// println(id.to_str())   // 017f22e2-79b0-7cc3-98c4-dc0c0c07398f
+//
+// // The hyphenless spelling names the same value.
+// println("${uuid.parse("017f22e279b07cc398c4dc0c0c07398f") == Some(id)}")   // true
+//
+// // A brace-wrapped one is not accepted, and neither is a misplaced hyphen.
+// println("${uuid.parse("{017f22e2-79b0-7cc3-98c4-dc0c0c07398f}") == None}")   // true
+// ```
 pub fn parse(text: Str) -> ?Uuid
     match hex_digits_of(text)
         None      => None
@@ -144,42 +176,100 @@ fn hyphens_are_canonical(text: Str) -> Bool
 
 // ── Minting one ──────────────────────────────────────────────────────
 
-// A version 4 UUID from the operating system's CSPRNG (RFC 9562 §5.4):
-// 122 unpredictable bits, with the version and variant fields stamped
-// over six of the 128.  `None` where there is no such generator.
+// Mint a version 4 UUID from the operating system's CSPRNG (RFC 9562
+// §5.4): 122 unpredictable bits, with the version and variant fields
+// stamped over six of the 128.
+//
+// `None` where there is no such generator — a target without
+// `/dev/urandom` gets nothing rather than something guessable, because
+// a v4 that an observer can predict is worse than no identifier at all.
+// Use `v4_from` there, with an `Rng` seeded from whatever entropy the
+// target does have.
+//
+// ```novo
+// use uuid
+//
+// // The example writes its own `main` because minting reads the
+// // operating system's generator, which is beyond `[io]`.
+// fn main() [io, fs, rand]
+//     match uuid.v4()
+//         Some(id) => println("${id.version()} ${id.variant()}")   // 4 2
+//         None     => println("no operating-system generator here")
+// ```
 pub fn v4() -> ?Uuid [fs, rand]
     match os_bits()
         None    => None
         Some(u) => Some(stamp_v4(u))
 
-// A version 4 UUID from a generator you supply.  For a test that must
-// mint the same identifier twice — and for a target with no operating
-// system, seeding from whatever entropy it does have.
+// Mint a version 4 UUID from a generator you supply.
+//
+// For a test that must mint the same identifier twice — and for a
+// target with no operating system, seeding from whatever entropy it
+// does have.  It cannot fail, because you brought the randomness.
 //
 // The generator decides how unpredictable the result is.  A seeded
 // `Rng` is xoshiro256**, which is not cryptographically secure, so a
 // v4 minted from one is fine as a key in a table and not as a token.
+//
+// ```novo
+// use rng
+//
+// // Same seed, same identifier — which is what makes a v4 testable.
+// var a = rng.seeded(7)
+// var b = rng.seeded(7)
+// println("${uuid.v4_from(a) == uuid.v4_from(b)}")   // true
+// println("${uuid.v4_from(rng.seeded(7)).version()}")   // 4
+// ```
 pub fn v4_from(mut r: Rng) -> Uuid
     let hi = r.u64()
     let lo = r.u64()
     stamp_v4(Uuid { hi: hi, lo: lo })
 
-// A version 7 UUID (RFC 9562 §5.7): the current Unix time in
-// milliseconds in the first 48 bits, 74 random bits after it.  `None`
-// where there is no operating-system generator.
+// Mint a version 7 UUID (RFC 9562 §5.7): the current Unix time in
+// milliseconds in the first 48 bits, 74 random bits after it.
 //
+// `None` where there is no operating-system generator, as for `v4`.
 // Two of these minted in the same millisecond are ordered arbitrarily
 // with respect to each other — this module draws fresh randomness
 // rather than keeping a counter, so ordering is by millisecond and not
-// finer.
+// finer.  That is what a database index wants; it is not a sequence
+// number.
+//
+// ```novo
+// use uuid
+//
+// // Its own `main`: minting a v7 reads the generator AND the clock.
+// fn main() [io, fs, rand, time]
+//     match uuid.v7()
+//         Some(id) => println("${id.version()} ${id.unix_ms() > 0}")   // 7 true
+//         None     => println("no operating-system generator here")
+// ```
 pub fn v7() -> ?Uuid [fs, rand, time]
     match os_bits()
         None    => None
         Some(u) => Some(stamp_v7(now_ms(), u))
 
-// A version 7 UUID at a timestamp and from a generator you supply.  The
-// pure form of `v7`: same bits in, same identifier out, which is what
-// makes a v7 testable at all.
+// Mint a version 7 UUID at a timestamp and from a generator you supply.
+//
+// The pure form of `v7`: same bits in, same identifier out, which is
+// what makes a v7 testable at all.  The timestamp is yours, so this is
+// also how a backfill mints identifiers that sort where the records
+// they stand for belong.
+//
+// ```novo
+// use rng
+//
+// // 2022-02-22T19:22:22Z, the millisecond RFC 9562's example names.
+// var r = rng.seeded(7)
+// let id = uuid.v7_from(1645557742000, r)
+// println("${id.version()} ${id.unix_ms()}")   // 7 1645557742000
+//
+// // A later millisecond sorts after an earlier one, whatever the
+// // randomness under it — that is the whole reason v7 exists.
+// var s = rng.seeded(99)
+// println("${uuid.v7_from(1645557742000, s).to_str() < uuid.v7_from(1645557742001, s).to_str()}")
+// // true
+// ```
 pub fn v7_from(unix_ms: Int, mut r: Rng) -> Uuid
     let hi = r.u64()
     let lo = r.u64()
@@ -236,42 +326,77 @@ fn with_rfc_variant(lo: Int) -> Int
     (1 << 63) | (lo & keep_62)
 
 impl Uuid
-    // The sixteen bytes, big-endian — the order RFC 9562 lays a UUID
-    // out in, and the order a wire, a file or a `BINARY(16)` column
-    // expects.
+    // Answer the sixteen bytes, big-endian.
+    //
+    // The order RFC 9562 lays a UUID out in, and the order a wire, a
+    // file or a `BINARY(16)` column expects.  `from_bytes` reads it
+    // back exactly.  One allocation, for the buffer.
     fn to_bytes(self) -> Bytes
         var c = bytes.cursor_be(bytes.zeros(byte_len()))
         c.put_u64(self.hi)
         c.put_u64(self.lo)
         c.finish()
 
-    // The canonical text form: 32 lowercase hexadecimal digits in
-    // groups of 8-4-4-4-12, separated by hyphens.  Lowercase because
-    // that is what the specification says to produce; `parse` reads
-    // either case, because that is what it says to accept.
+    // Answer the canonical text form: 32 lowercase hexadecimal digits
+    // in groups of 8-4-4-4-12, separated by hyphens.
+    //
+    // Lowercase because that is what the specification says to produce;
+    // `parse` reads either case, because that is what it says to
+    // accept.  Two v7s compare in mint order as text as well as as
+    // bytes, since the timestamp leads and hexadecimal is
+    // order-preserving.
+    //
+    // ```novo
+    // let id = uuid.parse("017F22E2-79B0-7CC3-98C4-DC0C0C07398F") ?? uuid.nil()
+    // println(id.to_str())   // 017f22e2-79b0-7cc3-98c4-dc0c0c07398f
+    // ```
     fn to_str(self) -> Str
         let hex = bytes.to_hex(self.to_bytes())
         str.slice(hex, 0, 8) + "-" + str.slice(hex, 8, 12) + "-"
           + str.slice(hex, 12, 16) + "-" + str.slice(hex, 16, 20) + "-"
           + str.slice(hex, 20, 32)
 
-    // Which rule produced this value: 4 for a random UUID, 7 for a
-    // time-ordered one, 0 for the Nil UUID.  A version this module does
-    // not mint is still reported — reading somebody else's identifier
-    // is the point of asking.
+    // Answer which rule produced this value: 4 for a random UUID, 7 for
+    // a time-ordered one, 0 for the Nil UUID.
+    //
+    // A version this module does not mint is still reported — reading
+    // somebody else's identifier is the point of asking, and it is what
+    // lets one column hold both kinds.  Ask this before `unix_ms`,
+    // whose bits mean nothing on a v4.
+    //
+    // ```novo
+    // let v4 = uuid.parse("919108f7-52d1-4320-9bac-f847db4148a8") ?? uuid.nil()
+    // let v7 = uuid.parse("017f22e2-79b0-7cc3-98c4-dc0c0c07398f") ?? uuid.nil()
+    // println("${v4.version()} ${v7.version()}")   // 4 7
+    //
+    // // Both are the variant RFC 9562 specifies, which is 2.
+    // println("${v4.variant()} ${v7.variant()}")   // 2 2
+    // ```
     fn version(self) -> Int
         (self.hi >>> 12) & 0xf
 
-    // The layout family this value belongs to, as the two most
-    // significant bits of octet 8.  `2` is the variant RFC 9562
-    // specifies and the only one this module mints; `0` is the older
-    // Apollo NCS layout, and `3` covers Microsoft's and the range
-    // reserved for the future.
+    // Answer the layout family this value belongs to, as the two most
+    // significant bits of octet 8.
+    //
+    // `2` is the variant RFC 9562 specifies and the only one this
+    // module mints; `0` is the older Apollo NCS layout, and `3` covers
+    // Microsoft's and the range reserved for the future.  A value whose
+    // variant is not 2 has a `version` field that means nothing.  See
+    // `version` for the example.
     fn variant(self) -> Int
         (self.lo >>> 62) & 0x3
 
-    // The Unix millisecond timestamp in the first 48 bits.  Meaningful
-    // for a version 7 value and for nothing else — on a v4 these bits
-    // are random, so ask `version` first.
+    // Answer the Unix millisecond timestamp in the first 48 bits.
+    //
+    // Meaningful for a version 7 value and for nothing else — on a v4
+    // these bits are random, so ask `version` first.  The reading is
+    // the wall clock of the machine that minted it, which is what makes
+    // two machines' v7s comparable and also what makes the number worth
+    // no more than that clock was.
+    //
+    // ```novo
+    // let id = uuid.parse("017f22e2-79b0-7cc3-98c4-dc0c0c07398f") ?? uuid.nil()
+    // println("${id.unix_ms()}")   // 1645557742000, 2022-02-22T19:22:22Z
+    // ```
     fn unix_ms(self) -> Int
         self.hi >>> 16
