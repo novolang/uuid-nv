@@ -41,21 +41,11 @@ identifier should still be a v4.
 
 ## What it gives you
 
-| Function | |
-|---|---|
-| `uuid.v4() -> ?Uuid [fs, rand]` | 122 random bits from the operating system's CSPRNG |
-| `uuid.v7() -> ?Uuid [fs, rand, time]` | the current millisecond, then randomness |
-| `uuid.v4_from(r: Rng) -> Uuid` | the same, from a generator you supply |
-| `uuid.v7_from(unix_ms: Int, r: Rng) -> Uuid` | the same, at a timestamp you supply |
-| `uuid.parse(text: Str) -> ?Uuid` | the canonical form or the same digits unhyphenated, in either case |
-| `uuid.from_bytes(b: Bytes) -> ?Uuid` | sixteen bytes, big-endian |
-| `uuid.nil() -> Uuid` | the Nil UUID, all zeros |
-| `uuid.max() -> Uuid` | the Max UUID, all ones |
-| `u.to_str() -> Str` | the canonical lowercase `8-4-4-4-12` form |
-| `u.to_bytes() -> Bytes` | sixteen bytes, big-endian |
-| `u.version() -> Int` | `4`, `7`, `0` for Nil, or whatever version minted it |
-| `u.variant() -> Int` | `2` for the layout RFC 9562 specifies |
-| `u.unix_ms() -> Int` | the timestamp in the first 48 bits — a v7's field, and nothing on a v4 |
+The API is on [the package's page](https://novo-lang.org/packages/uuid-nv),
+generated from these sources: every `pub` declaration with its signature,
+its effect row and the comment block written above it. A table of names
+here would be a second original, and the second original is the one that
+goes stale.
 
 A `Uuid` is two `Int`s, so it costs sixteen bytes in a struct with no
 indirection, and `==` compares it.
@@ -130,9 +120,10 @@ they need state this package does not keep.
 
 ## Dependencies
 
-| Package | Range | Why |
-|---|---|---|
-| [`rand-nv`](https://novo-lang.org/packages) | `^0.1.0` | the random bits, and the seedable generator the `_from` pair takes |
+It depends on [`rand-nv`](https://novo-lang.org/packages/rand-nv) for the
+random bits, and for the seedable generator the `_from` pair takes. The
+range is on [the package's page](https://novo-lang.org/packages/uuid-nv),
+read from this manifest.
 
 The range is the widest this package supports, because it calls only
 what `rand-nv` shipped in its first release. That matters to you rather
