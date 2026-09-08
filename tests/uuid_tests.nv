@@ -106,7 +106,7 @@ fn test_a_buffer_of_the_wrong_length_is_refused() [io]
 @test
 fn test_a_generated_v4_carries_the_fields_a_v4_promises() [io]
     var r = rng.seeded(7)
-    for i in 0 .. 64
+    for i in 0..64
         test.case("draw ${i}")
         let u = uuid.v4_from(r)
         test.assert_eq(u.version(), 4)
@@ -123,7 +123,7 @@ fn test_a_generated_v4_is_fixed_by_its_seed() [io]
 @test
 fn test_a_generated_v7_carries_the_timestamp_it_was_given() [io]
     var r = rng.seeded(7)
-    for i in 0 .. 64
+    for i in 0..64
         test.case("draw ${i}")
         let u = uuid.v7_from(rfc_v7_ms() + i, r)
         test.assert_eq(u.version(), 7)
@@ -137,7 +137,7 @@ fn test_v7_values_sort_in_the_order_they_were_minted() [io]
     // the column stays dense.
     var r = rng.seeded(11)
     var previous = uuid.v7_from(rfc_v7_ms(), r).to_str()
-    for step in 1 .. 64
+    for step in 1..64
         test.case("step ${step}")
         let next = uuid.v7_from(rfc_v7_ms() + step, r).to_str()
         test.assert_true(next > previous, "${next} did not sort after ${previous}")
