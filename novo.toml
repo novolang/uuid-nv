@@ -1,23 +1,39 @@
 [package]
 name        = "uuid-nv"
-version     = "0.1.4"
-description = "RFC 9562 UUIDs in the two versions worth minting: v4, 122 random bits that reveal nothing, and v7, a millisecond timestamp followed by randomness so that identifiers sort in the order they were made.  Parses either case, prints the canonical lowercase form, and reads the version and variant of a value somebody else minted."
+version     = "0.1.5"
+description = "RFC 9562 UUIDs in the two versions in current use: v4, 122 random bits, and v7, a millisecond timestamp followed by randomness so that identifiers sort in the order they were made.  Parses either case, prints the canonical lowercase form, and reads the version and variant of a value somebody else minted."
 license     = "Apache-2.0"
+
+# `experimental` because no program outside this repository has used the
+# package yet, and the tests exercise the functions rather than a
+# consumer's use of them.
 stability   = "experimental"
-category    = "encoding"
+
+# `host`: `v4` reads the operating system's generator and `v7` reads the
+# clock as well, so both declare an effect row and neither builds for a
+# target without an operating system.  The `_from` pair is arithmetic
+# over bits the caller supplies, and the rest of the package reaches for
+# nothing at all.
 layer       = "host"
+
+category    = "encoding"
 tags        = ["uuid", "uuidv7", "uuidv4", "identifier", "rfc9562"]
 repository  = "https://github.com/novolang/uuid-nv"
 maintainers = ["novo-lang"]
 main        = "src/main.nv"
 
-# The README is the package's one page, and its own first heading is the
-# package name — which says nothing in a list of this package's pages.
+# The README is the package's one page.  Its own first heading is the
+# package name, which says nothing in a list of this package's pages, so
+# the line below is what a reader sees there instead.
 [docs.pages]
 "README.md" = "Minting and reading RFC 9562 UUIDs"
 
 [dependencies]
-# The random bits.  The widest range this package supports: it calls
-# only what rand-nv shipped in its first release.  The millisecond clock
-# a v7 needs is `Zoned.now`, which is in the standard library.
+# rand-nv supplies the random bits, and the seedable generator the
+# `_from` pair takes.  The range is the widest this package supports,
+# because it calls only what rand-nv shipped in its first release.  A
+# range that excluded a release a consumer already holds would be a
+# version conflict that consumer had to resolve.  The millisecond clock
+# a version 7 value needs is `Zoned.now`, which is in the standard
+# library.
 rand-nv = "^0.1.0"
