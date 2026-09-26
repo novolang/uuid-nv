@@ -222,7 +222,7 @@ pub fn v4() -> ?Uuid [fs, rand]
 // println("${uuid.v4_from(a) == uuid.v4_from(b)}")   // true
 // println("${uuid.v4_from(rng.seeded(7)).version()}")   // 4
 // ```
-pub fn v4_from(mut r: Rng) -> Uuid
+pub fn v4_from(var r: Rng) -> Uuid
     let hi = r.u64()
     let lo = r.u64()
     stamp_v4(Uuid { hi: hi, lo: lo })
@@ -275,7 +275,7 @@ pub fn v7() -> ?Uuid [fs, rand, time]
 // println("${uuid.v7_from(1645557742000, s).to_str() < uuid.v7_from(1645557742001, s).to_str()}")
 // // true
 // ```
-pub fn v7_from(unix_ms: Int, mut r: Rng) -> Uuid
+pub fn v7_from(unix_ms: Int, var r: Rng) -> Uuid
     let hi = r.u64()
     let lo = r.u64()
     stamp_v7(unix_ms, Uuid { hi: hi, lo: lo })
