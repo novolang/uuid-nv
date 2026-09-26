@@ -4,6 +4,17 @@ Newest first.  Below `1.0.0` a breaking change bumps the **minor**
 number and a compatible one the **patch**; see [Version numbers in the
 Orbit package registry](https://novo-lang.org/docs/registry/semver.html).
 
+## 0.1.6 — 2026-09-26
+
+- **The toolchain floor is 0.12.0**, where the manifest named none.
+  `parse` hands an absent value back with `!` on an optional, a 0.12.0
+  form. An older toolchain reads `!` on an optional as unwrap or panic,
+  so it would panic where this release answers `None`. No signature and
+  no answer changed.
+- The sources are in the canonical form `novo fmt` 0.12.0 prints.  A
+  parameter a function writes is spelled `var` where it was `mut`.  No
+  code changed.
+
 ## 0.1.5 — 2026-09-24
 
 The documentation and comments in plain prose; no declaration changed.

@@ -149,12 +149,9 @@ pub fn from_bytes(b: Bytes) -> ?Uuid
 // println("${uuid.parse("{017f22e2-79b0-7cc3-98c4-dc0c0c07398f}") == None}")   // true
 // ```
 pub fn parse(text: Str) -> ?Uuid
-    match hex_digits_of(text)
-        None      => None
-        Some(hex) =>
-            match bytes.from_hex(hex)
-                None    => None
-                Some(b) => from_bytes(b)
+    let hex = hex_digits_of(text)!
+    let b = bytes.from_hex(hex)!
+    from_bytes(b)
 
 // The 32 hexadecimal digits of `text`, hyphens removed, or `None` when
 // the shape is wrong.  Whether the digits are digits is left to

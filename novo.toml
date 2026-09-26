@@ -1,6 +1,6 @@
 [package]
 name        = "uuid-nv"
-version     = "0.1.5"
+version     = "0.1.6"
 description = "RFC 9562 UUIDs in the two versions in current use: v4, 122 random bits, and v7, a millisecond timestamp followed by randomness so that identifiers sort in the order they were made.  Parses either case, prints the canonical lowercase form, and reads the version and variant of a value somebody else minted."
 license     = "Apache-2.0"
 
@@ -20,6 +20,10 @@ category    = "encoding"
 tags        = ["uuid", "uuidv7", "uuidv4", "identifier", "rfc9562"]
 repository  = "https://github.com/novolang/uuid-nv"
 maintainers = ["novo-lang"]
+# `!` on an optional hands `None` back from a function that answers an
+# optional from toolchain 0.12.0.  An older toolchain panics there
+# instead, so the floor is 0.12.0.
+novo        = ">= 0.12.0"
 main        = "src/main.nv"
 
 # The README is the package's one page.  Its own first heading is the
